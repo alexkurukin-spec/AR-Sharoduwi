@@ -1,22 +1,13 @@
-import dynamic from 'next/dynamic';
+import BalloonsARClient from '@/components/BalloonsARClient';
 
 /**
  * Пример страницы товара с AR-примеркой.
  *
- * ВАЖНО: компонент использует WebGL/WebXR и обращается к `navigator`,
- * поэтому подключаем его только на клиенте через `next/dynamic` с `ssr: false`.
- * Это исключает ошибки гидрации и «window is not defined» на сервере.
+ * Это Server Component. Тяжёлая WebGL/WebXR-сцена подключается через клиентскую
+ * обёртку `BalloonsARClient`, которая делает `next/dynamic({ ssr: false })` внутри
+ * client-границы — так исключаются SSR-ошибки («window is not defined») и лишний
+ * серверный рендер three.js.
  */
-const AdvancedFloatingBalloonsAR = dynamic(
-  () => import('@/components/AdvancedFloatingBalloonsAR'),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-14 w-full animate-pulse rounded-2xl bg-gradient-to-r from-fuchsia-600/40 to-cyan-500/40" />
-    ),
-  },
-);
-
 export default function ProductPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-10">
@@ -42,7 +33,7 @@ export default function ProductPage() {
 
           {/* ⭐ AR-ПРИМЕРКА */}
           <div className="mt-6">
-            <AdvancedFloatingBalloonsAR
+            <BalloonsARClient
               productName='Связка «Розовая мечта»'
               initialCompositionId="romantic"
             />

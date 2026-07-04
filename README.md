@@ -65,20 +65,35 @@ npm install -D @types/three
 ## 🚀 Использование в странице товара
 
 Компонент рендерится **только на клиенте** (WebGL/WebXR + `navigator`), поэтому
-подключайте через `next/dynamic` с `ssr: false`:
+подключается через `next/dynamic` с `ssr: false`. Важно: в Next.js 15
+`ssr: false` **запрещён внутри Server Component**, поэтому динамический импорт
+живёт в тонкой клиентской обёртке [`BalloonsARClient`](src/components/BalloonsARClient.tsx):
 
 ```tsx
-// src/app/product/page.tsx
+// src/components/BalloonsARClient.tsx
+'use client';
 import dynamic from 'next/dynamic';
+import type { AdvancedFloatingBalloonsARProps } from './AdvancedFloatingBalloonsAR';
 
 const AdvancedFloatingBalloonsAR = dynamic(
-  () => import('@/components/AdvancedFloatingBalloonsAR'),
+  () => import('./AdvancedFloatingBalloonsAR'),
   { ssr: false },
 );
 
+export default function BalloonsARClient(props: AdvancedFloatingBalloonsARProps) {
+  return <AdvancedFloatingBalloonsAR {...props} />;
+}
+```
+
+А серверная страница товара использует обёртку как обычный компонент:
+
+```tsx
+// src/app/product/page.tsx  (Server Component)
+import BalloonsARClient from '@/components/BalloonsARClient';
+
 export default function ProductPage() {
   return (
-    <AdvancedFloatingBalloonsAR
+    <BalloonsARClient
       productName='Связка «Розовая мечта»'
       initialCompositionId="romantic"
     />
@@ -87,6 +102,8 @@ export default function ProductPage() {
 ```
 
 Готовый пример — в [`src/app/product/page.tsx`](src/app/product/page.tsx).
+Тяжёлая three.js-сцена при этом **лениво подгружается** и не попадает в
+first-load JS страницы.
 
 ### Props
 
@@ -167,5 +184,6 @@ src/
 ├─ app/
 │  └─ product/page.tsx        # пример карточки товара
 └─ components/
-   └─ AdvancedFloatingBalloonsAR.tsx   # весь компонент (self-contained)
+   ├─ AdvancedFloatingBalloonsAR.tsx   # весь компонент (self-contained)
+   └─ BalloonsARClient.tsx             # client-обёртка (dynamic ssr:false)
 ```
