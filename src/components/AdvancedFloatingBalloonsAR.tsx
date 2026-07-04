@@ -24,6 +24,8 @@
  */
 
 import {
+  Component,
+  type ReactNode,
   Suspense,
   useCallback,
   useEffect,
@@ -39,6 +41,7 @@ import {
   Environment,
   Float,
   Html,
+  Lightformer,
   OrbitControls,
   useProgress,
   // useGLTF,  // ← раскомментируйте для GLB (см. GLB_MODEL_HOWTO)
@@ -275,8 +278,13 @@ function Balloon({ spec, colorOverride, geometry }: BalloonProps) {
         />
       </mesh>
 
-      {/* Узелок (носик снизу) */}
-      <mesh position={[0, -1.18, 0]} scale={0.12} castShadow>
+      {/* Узелок (носик снизу) — конус вершиной ВНИЗ, к ниточке */}
+      <mesh
+        position={[0, -1.16, 0]}
+        scale={0.1}
+        rotation={[Math.PI, 0, 0]}
+        castShadow
+      >
         <coneGeometry args={[1, 1.6, 12]} />
         <meshStandardMaterial color={color} roughness={0.5} metalness={isFoil ? 0.6 : 0.1} />
       </mesh>
@@ -391,8 +399,21 @@ function Scene({ preset, colorOverride, arActive, autoRotate }: SceneProps) {
       <directionalLight position={[-4, 3, -2]} intensity={0.7} color="#bcd4ff" />
       <pointLight position={[0, 2.5, 2]} intensity={12} color="#ffffff" distance={8} decay={2} />
 
-      {/* HDRI-окружение для честных отражений на фольге */}
-      <Environment preset="studio" environmentIntensity={0.9} />
+      {/*
+        Окружение для честных PBR-отражений на фольге.
+        Собрано из Lightformer'ов, БЕЗ загрузки HDRI из сети — это важно:
+        drei `Environment preset=…` тянет .hdr с внешнего CDN, и при офлайне/
+        блокировке сети падение fetch роняет всю сцену. Локальное окружение
+        детерминировано, мгновенно и работает офлайн.
+        (Хотите фотореализм — положите свой файл в /public/hdri/studio.hdr и
+         используйте <Environment files="/hdri/studio.hdr" />.)
+      */}
+      <Environment resolution={256} environmentIntensity={0.9}>
+        <Lightformer form="rect" intensity={3} position={[0, 4, -3]} scale={[12, 5, 1]} color="#ffffff" />
+        <Lightformer form="rect" intensity={1.4} position={[-5, 2, 2]} scale={[4, 8, 1]} color="#bcd4ff" />
+        <Lightformer form="rect" intensity={1.4} position={[5, 2, 2]} scale={[4, 8, 1]} color="#ffd6e0" />
+        <Lightformer form="ring" intensity={1.1} position={[0, -3, 4]} scale={5} color="#ffffff" />
+      </Environment>
 
       {/* Плавающая связка. Float добавляет едва заметное «дыхание» поверх физики. */}
       <Float speed={1.1} rotationIntensity={0.15} floatIntensity={0.25}>
@@ -462,6 +483,43 @@ function CaptureBridge({ onReady }: { onReady: (fn: () => string) => void }) {
     });
   }, [gl, scene, camera, onReady]);
   return null;
+}
+
+/* ======================================================================== *
+ *  ERROR BOUNDARY — чтобы падение загрузки ассета не роняло весь overlay
+ * ======================================================================== */
+
+class SceneErrorBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: unknown) {
+    // eslint-disable-next-line no-console
+    console.error('[BalloonsAR] scene error:', error);
+  }
+  render() {
+    return this.state.hasError ? this.props.fallback : this.props.children;
+  }
+}
+
+function SceneErrorFallback() {
+  return (
+    <Html center>
+      <div className="flex flex-col items-center gap-2 text-center">
+        <span className="text-4xl">🎈</span>
+        <p className="text-sm font-medium text-white/80">
+          Не удалось загрузить 3D-сцену
+        </p>
+        <p className="max-w-[220px] text-xs text-white/50">
+          Проверьте соединение и попробуйте открыть превью ещё раз.
+        </p>
+      </div>
+    </Html>
+  );
 }
 
 /* ======================================================================== *
@@ -814,15 +872,17 @@ export default function AdvancedFloatingBalloonsAR({
               <XR store={xrStore}>
                 {/* XROrigin позиционирует связку на удобной высоте перед пользователем в AR */}
                 <XROrigin position={[0, 0, 0]} />
-                <Suspense fallback={<Loader />}>
-                  <Scene
-                    preset={activePreset}
-                    colorOverride={colorOverride}
-                    arActive={arActive}
-                    autoRotate={autoRotate}
-                  />
-                  <CaptureBridge onReady={(fn) => (captureFn.current = fn)} />
-                </Suspense>
+                <SceneErrorBoundary fallback={<SceneErrorFallback />}>
+                  <Suspense fallback={<Loader />}>
+                    <Scene
+                      preset={activePreset}
+                      colorOverride={colorOverride}
+                      arActive={arActive}
+                      autoRotate={autoRotate}
+                    />
+                    <CaptureBridge onReady={(fn) => (captureFn.current = fn)} />
+                  </Suspense>
+                </SceneErrorBoundary>
               </XR>
             </Canvas>
 
